@@ -160,7 +160,7 @@ func TryConnect(localAddr *net.TCPAddr) net.Conn {
 	const millisecondsBeforeRetry = 100
 	var conn net.Conn
 	for {
-		tcpconn, err := net.DialTCP("tcp", nil, Config.Addr)
+		tcpconn, err := net.DialTCP("tcp", localAddr, Config.Addr)
 		if err == nil && tcpconn != nil {
 			tcpconn.SetNoDelay(true)
 			conn = tcpconn
