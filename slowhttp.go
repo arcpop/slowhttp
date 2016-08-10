@@ -105,11 +105,12 @@ func main() {
 //the connection usable immediately after returning.
 func TryConnect() net.Conn {
 	const millisecondsBeforeRetry = 100
-	var err error
 	var conn net.Conn
 	for {
-		conn, err = net.DialTCP("tcp", nil, Config.Addr)
-		if err == nil && conn != nil {
+		tcpconn, err := net.DialTCP("tcp", nil, Config.Addr)
+		if err == nil && tcpconn != nil {
+			tcpconn.SetNoDelay(true)
+			conn = tcpconn
 			if Config.IsHTTPS {
 				c := tls.Client(conn, Config.TLSConfig)
 				err = c.Handshake()
