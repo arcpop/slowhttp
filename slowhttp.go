@@ -177,6 +177,7 @@ func TryConnect(localAddr *net.TCPAddr) net.Conn {
 			}
 			return conn
 		}
+		fmt.Println(err)
 		time.Sleep(millisecondsBeforeRetry * time.Millisecond)
 	}
 }
