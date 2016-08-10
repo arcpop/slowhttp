@@ -132,14 +132,14 @@ func main() {
 
 		//Start the workers
 		for i := 1; i <= Config.NumWorkers; i++ {
-				go func() {
+				go func(ip net.IP, port int) {
 					for {
 						RunConnection(&net.TCPAddr{
-							IP: net.ParseIP(localAddresses[i / 60000]),
-							Port: 2049 + (i % 60000),
+							IP: ip,
+							Port: port,
 						})
 					}
-				}()
+				}(net.ParseIP(localAddresses[i / 60000]), 2049 + (i % 60000))
 				if (i % Config.Connrate) == 0 {
 					time.Sleep(time.Second)
 					fmt.Println("Connecting: ", Stats.Connecting, "| Sending: ", Stats.Sending)
