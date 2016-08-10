@@ -124,14 +124,14 @@ func main() {
         if len(localAddresses) == 0 {
             fmt.Println("No IP addresses found!")
             return
-        } else if len(localAddresses) * 60000 < Config.NumWorkers {
+        } else if len(localAddresses) * 60000 <= Config.NumWorkers {
             fmt.Println("Not enough IP addresses found!")
             return
 		}
         fmt.Printf("Using following IPs: %+v\n", localAddresses)
 
 		//Start the workers
-		for i := 1; i <= Config.NumWorkers; i++ {
+		for i := 0; i < Config.NumWorkers; i++ {
 				go func(addr *net.TCPAddr) {
 					for {
 						RunConnection(addr)
